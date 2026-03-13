@@ -517,18 +517,26 @@ a { text-decoration: none; color: inherit; }
 :root { --sidebar-w: 240px; }
 #sb-overlay {
   display: none; position: fixed; inset: 0;
-  background: rgba(15,23,42,0.35); z-index: 300;
+  background: rgba(15,23,42,0.35); z-index: 298; /* BELOW sidebar's 400 */
   backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  pointer-events: none;           /* don't block sidebar when hidden */
+  touch-action: none;             /* Android: suppress touch passthrough */
 }
-#sb-overlay.open { display: block; }
+#sb-overlay.open {
+  display: block;
+  pointer-events: auto;           /* only capture clicks when visible */
+}
 #sidebar {
   position: fixed; top: 0; left: 0; bottom: 0;
   width: var(--sidebar-w); background: var(--surface);
-  border-right: 1px solid var(--border); z-index: 400;
+  border-right: 1px solid var(--border); z-index: 400; /* always above overlay */
   transform: translateX(calc(-1 * var(--sidebar-w)));
   transition: transform 0.25s cubic-bezier(0.16,1,0.3,1);
   display: flex; flex-direction: column;
   box-shadow: var(--shadow-md); overflow-y: auto;
+  pointer-events: auto;           /* always clickable */
+  touch-action: pan-y;            /* allow vertical scroll inside sidebar */
 }
 #sidebar.open { transform: translateX(0); }
 .sb-header { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
@@ -652,7 +660,24 @@ button, .btn, .chkbox, .rev-btn, .day-tab, .quicktab {
 }
 .chkbox { min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; }
 
-/* Sidebar mobile slide animation — transition upgrade only, no z-index change here */
+/* Sidebar overlay for mobile */
+#sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 298;                   /* BELOW sidebar's 400 */
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  pointer-events: none;           /* suppress when hidden */
+  touch-action: none;
+}
+#sidebar-overlay.visible {
+  display: block;
+  pointer-events: auto;           /* allow clicks to close sidebar */
+}
+
+/* Sidebar mobile slide animation */
 #sidebar {
   transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
   will-change: transform;
@@ -759,8 +784,7 @@ pre, code { white-space: pre-wrap; word-break: break-all; }
   #sidebar {
     position: fixed !important;
     left: 0; top: 0; bottom: 0;
-    /* z-index must exceed #sb-overlay (300) so sidebar is never obscured */
-    z-index: 500 !important;
+    /* z-index NOT overridden here — inherits z-index: 400 from base rule */
     width: 240px !important;
     transform: translateX(-100%);
     box-shadow: 4px 0 24px rgba(0,0,0,0.18);
