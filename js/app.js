@@ -214,12 +214,6 @@ function render() {
     const el = document.getElementById("vb-mantra");
     if (el && !el.innerText.trim()) el.innerText = visionBoard.mantra || "";
   }
-
-  // Mobile: sync the dedicated sidebar-overlay div (outside #app, so not re-rendered)
-  const mobileOverlay = document.getElementById('sidebar-overlay');
-  if (mobileOverlay) {
-    mobileOverlay.classList.toggle('visible', sidebarOpen);
-  }
 }
 
 // ══════════════════════════════════════════════════════

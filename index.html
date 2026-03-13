@@ -37,11 +37,8 @@
 </head>
 <body>
 
-  <!-- Main app mount point -->
+  <!-- Main app mount point — sidebar overlay (#sb-overlay) is rendered inside here -->
   <div id="app"></div>
-
-  <!-- Sidebar overlay for mobile tap-to-close -->
-  <div id="sidebar-overlay" onclick="closeSidebarOverlay()"></div>
 
   <!-- Full-screen focus mode overlay -->
   <div id="focus-overlay" onclick="">
@@ -78,14 +75,6 @@
           .then(reg => console.log('[PWA] SW registered:', reg.scope))
           .catch(err => console.warn('[PWA] SW registration failed:', err));
       });
-    }
-
-    // Mobile: close sidebar when tapping overlay
-    function closeSidebarOverlay() {
-      sidebarOpen = false;
-      const overlay = document.getElementById('sidebar-overlay');
-      if (overlay) overlay.classList.remove('visible');
-      render();
     }
 
     // PWA Install prompt — capture and expose for optional in-app install button
