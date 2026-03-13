@@ -50,8 +50,8 @@ function render() {
   ];
 
   const sidebarHtml = `
-  <div id="sb-overlay" class="${sidebarOpen?"open":""}" onclick="sidebarOpen=false;render()"></div>
-  <div id="sidebar" class="${sidebarOpen?"open":""}">
+  <div id="sb-overlay" class="${sidebarOpen?"open":""}" onclick="sidebarOpen=false;render()" style="touch-action:none"></div>
+  <div id="sidebar" class="${sidebarOpen?"open":""}" style="touch-action:pan-y">
     <div class="sb-header">
       <div class="hdr-logo-icon" style="flex-shrink:0">📚</div>
       <div style="flex:1;min-width:0">
