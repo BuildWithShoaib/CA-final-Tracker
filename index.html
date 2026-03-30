@@ -80,12 +80,10 @@
   <!-- Standard splash for iOS (link rel approach) -->
   <link rel="apple-touch-startup-image" href="assets/icons/icon-512.png"/>
 
-  <!-- ═══════════════════════════════════════════════════════════════
-       ANDROID WEBVIEW CACHE PREVENTION
-       ═══════════════════════════════════════════════════════════════ -->
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
-  <meta http-equiv="Pragma" content="no-cache"/>
-  <meta http-equiv="Expires" content="0"/>
+  <!-- Cache-Control meta tags removed:
+       HTTP-equiv cache headers are ignored by Safari PWA/standalone mode
+       and conflict with the service worker cache strategy. The SW handles
+       caching properly via network-first for JS/HTML/CSS. -->
 
   <title>CA Final — Performance Tracker</title>
 
@@ -195,9 +193,7 @@
     }
   </style>
 
-  <!-- XLSX library for export -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
-          crossorigin="anonymous"></script>
+  <!-- XLSX library moved to body — was render-blocking in <head> -->
 </head>
 <body>
 
@@ -215,6 +211,14 @@
       <button class="focus-btn exit" onclick="exitFocusMode()">✕ Exit Focus</button>
     </div>
   </div>
+
+  <!-- ── XLSX library for export (loaded before app scripts, non-blocking) ──
+       Moved from <head> where it was RENDER-BLOCKING on iOS Safari.
+       Placed here in <body> so the page renders immediately, then scripts load.
+       No defer needed — inline <script> tags in <body> execute top-to-bottom. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+          crossorigin="anonymous"
+          onerror="console.warn('[CA Tracker] XLSX library failed to load - export may be unavailable')"></script>
 
   <!-- ── JavaScript Modules (order matters — globals must be defined first) ── -->
   <script src="js/constants.js"></script>

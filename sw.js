@@ -1,36 +1,33 @@
 // sw.js — CA Final Study Tracker Service Worker
 // ═══════════════════════════════════════════════════════════════════
 //
-// VERSIONING STRATEGY:
-//   Bump CACHE_VERSION whenever you deploy changes.
-//   The activate handler deletes all caches that don't match CACHE_NAME.
-//   This ensures iOS Safari never serves stale cached files after an update.
+// VERSION HISTORY:
+//   ca-tracker-v1  — original (aggressive caching, caused iOS white screen)
+//   ca-tracker-v3  — iOS-safe rewrite (network-first, non-atomic install)
 //
-//   Old cache:  ca-tracker-v1   ← deleted on next activate
-//   Current:    ca-tracker-v2
-//
-// iOS-SPECIFIC FIXES:
-//   1. self.skipWaiting() — activates new SW immediately instead of waiting
-//      for all tabs to close (iOS keeps PWA tabs alive indefinitely)
-//   2. clients.claim() — takes control of existing pages immediately
-//   3. SKIP_WAITING message handler — allows the page to trigger activation
-//   4. Network-first strategy for HTML — ensures iOS never loads stale shell
-//   5. Cache-busting: HTML and JS files use network-first (not cache-first)
-//      so updates propagate immediately on iOS
-//   6. External resource handling bypasses SW to avoid opaque response issues
+// KEY iOS FIXES IN THIS VERSION:
+//   1. Non-atomic pre-cache: each URL cached individually so one 404
+//      does NOT abort the entire SW install (the v1 atomicaddAll bug).
+//   2. skipWaiting() called even when pre-cache partly fails.
+//   3. External CDN URLs (XLSX, Google Fonts) are never intercepted.
+//   4. isExternal uses URL origin comparison — reliable across all paths.
+//   5. Network-first for HTML + JS + CSS; cache-first for icons/images.
+//   6. All catch() handlers return a usable response (never undefined).
 //
 // ═══════════════════════════════════════════════════════════════════
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const CACHE_NAME    = `ca-tracker-${CACHE_VERSION}`;
 
 // ── Files to pre-cache on install ──────────────────────────────────
-// These are fetched and stored during SW installation.
-// Only local (same-origin) files — external URLs cause opaque responses
-// that inflate cache storage and can fail on iOS.
+// ONLY local same-origin files that ACTUALLY EXIST on disk.
+// Missing files cause SW install failure on iOS — even one 404 can
+// abort the entire install when using cache.addAll() (atomic).
+// We use individual fetches below to avoid this trap.
 const PRECACHE_URLS = [
   './index.html',
   './css/style.css',
+  './manifest.json',
   './js/constants.js',
   './js/storage.js',
   './js/risk-engine.js',
@@ -43,167 +40,176 @@ const PRECACHE_URLS = [
   './js/diary.js',
   './js/strategy.js',
   './js/app.js',
-  './manifest.json',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   './assets/icons/icon-180.png',
-  './assets/icons/icon-152.png',
   './assets/icons/icon-167.png',
+  './assets/icons/icon-152.png',
   './assets/icons/icon-120.png',
+  './assets/icons/icon-96.png',
 ];
 
-// ── Install: pre-cache local assets ────────────────────────────────
-self.addEventListener('install', event => {
+// ── Install: cache assets one-by-one (NON-ATOMIC) ──────────────────
+// Using individual cache.put() calls instead of cache.addAll() so that
+// a single missing file does NOT abort SW installation.
+// THE ROOT CAUSE: v1 used cache.addAll() which fails atomically —
+// one missing icon (e.g. icon-96.png) killed the whole SW install,
+// leaving iOS with no service worker and a white screen.
+self.addEventListener('install', function(event) {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        // addAll fails atomically — if one URL fails, nothing is cached.
-        // We filter to only local files to avoid opaque response issues.
-        const localUrls = PRECACHE_URLS.filter(u => !u.startsWith('http'));
-        return cache.addAll(localUrls);
-      })
-      .then(() => {
-        // CRITICAL for iOS: activate this SW immediately without waiting
-        // for existing tabs to close. iOS PWAs often keep one tab open
-        // indefinitely, so without skipWaiting(), updates never activate.
-        return self.skipWaiting();
-      })
-      .catch(err => {
-        // Pre-cache failure must not break the SW installation.
-        // The app will still work — just won't be fully offline-capable
-        // until the next successful install.
-        console.warn('[SW] Pre-cache partial failure (non-fatal):', err);
-        // Still call skipWaiting even if some files failed
-        return self.skipWaiting();
-      })
+    caches.open(CACHE_NAME).then(function(cache) {
+      var cachePromises = PRECACHE_URLS.map(function(url) {
+        return fetch(url, { cache: 'no-store' })
+          .then(function(response) {
+            if (response.ok) {
+              return cache.put(url, response);
+            }
+            console.warn('[SW] Pre-cache skip (non-ok):', url, response.status);
+          })
+          .catch(function(err) {
+            console.warn('[SW] Pre-cache skip (error):', url, err.message);
+            // Non-fatal: SW install continues regardless
+          });
+      });
+      return Promise.all(cachePromises);
+    })
+    .catch(function(err) {
+      console.warn('[SW] Cache open failed:', err);
+    })
+    .then(function() {
+      // CRITICAL: always call skipWaiting even if pre-cache had errors.
+      // iOS keeps PWA tabs alive indefinitely — without this a new SW
+      // version would NEVER activate for an iOS user.
+      return self.skipWaiting();
+    })
   );
 });
 
 // ── Activate: delete ALL old caches ────────────────────────────────
-self.addEventListener('activate', event => {
+self.addEventListener('activate', function(event) {
   event.waitUntil(
     caches.keys()
-      .then(cacheNames =>
-        Promise.all(
+      .then(function(cacheNames) {
+        return Promise.all(
           cacheNames
-            // Delete every cache that isn't the current version
-            .filter(name => name !== CACHE_NAME)
-            .map(name => {
+            .filter(function(name) { return name !== CACHE_NAME; })
+            .map(function(name) {
               console.log('[SW] Deleting old cache:', name);
               return caches.delete(name);
             })
-        )
-      )
-      .then(() => {
-        // CRITICAL for iOS: take control of ALL open tabs immediately.
-        // Without clients.claim(), the new SW only controls pages opened
-        // AFTER activation — the current page stays under the old SW.
+        );
+      })
+      .then(function() {
+        // CRITICAL: take control of all open pages immediately.
+        // Without this, the current iOS page stays under the old SW.
+        return self.clients.claim();
+      })
+      .catch(function(err) {
+        console.warn('[SW] Activate error:', err);
         return self.clients.claim();
       })
   );
 });
 
 // ── Message handler: SKIP_WAITING ──────────────────────────────────
-// The index.html JS sends this message to trigger immediate activation
-// of a waiting SW. This is the correct pattern for iOS where the user
-// can't easily close all tabs to trigger a SW update.
-self.addEventListener('message', event => {
+self.addEventListener('message', function(event) {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
 
-// ── Fetch: layered caching strategy ────────────────────────────────
-self.addEventListener('fetch', event => {
-  const url = event.request.url;
-  const method = event.request.method;
+// ── Fetch: safe network-first strategy ─────────────────────────────
+self.addEventListener('fetch', function(event) {
+  var req = event.request;
+  var url = req.url;
 
-  // Only handle GET requests
-  if (method !== 'GET') return;
+  // Only handle GET
+  if (req.method !== 'GET') return;
 
-  // Skip chrome-extension and non-http(s) URLs
-  if (!url.startsWith('http')) return;
-  if (url.startsWith('chrome-extension://')) return;
+  // Skip non-http protocols
+  if (url.indexOf('http') !== 0) return;
 
-  // ── External resources: BYPASS SERVICE WORKER ──────────────────
-  // We do NOT intercept external CDN/font requests in the SW.
-  // Reasons:
-  //   1. Opaque responses (no-cors) bloat iOS cache storage unpredictably
-  //   2. External resources have their own CDN caching
-  //   3. Avoids SSL/CORS issues in iOS WebKit
-  //   4. The XLSX library and Google Fonts work fine without SW caching
-  const isExternal = !url.startsWith(self.location.origin) &&
-                     !url.startsWith('./');
+  // ── External resources: BYPASS the service worker ──────────────
+  // Never intercept requests to CDNs, Google Fonts, etc.
+  // Opaque (no-cors) responses corrupt iOS cache and cause 404-style
+  // failures that are impossible to recover from without clearing storage.
+  var requestOrigin;
+  try {
+    requestOrigin = new URL(url).origin;
+  } catch (e) {
+    return; // Malformed URL — skip
+  }
 
-  if (isExternal) {
-    // Let the browser handle it normally — no SW interception
+  if (requestOrigin !== self.location.origin) {
+    return; // Let browser handle external requests natively
+  }
+
+  // ── HTML: Network-first ─────────────────────────────────────────
+  // Always try to get fresh HTML. Stale cached HTML is the top cause
+  // of "frozen" iOS PWA state after an app update.
+  if (url.indexOf('.html') !== -1 || url.slice(-1) === '/') {
+    event.respondWith(networkFirst(req));
     return;
   }
 
-  // ── HTML files: NETWORK-FIRST with cache fallback ───────────────
-  // CRITICAL for iOS: always try network first for the app shell.
-  // Cache-first for HTML means iOS would never see updates.
-  // If network fails (offline), serve from cache.
-  if (url.endsWith('.html') || url.endsWith('/') ||
-      url === self.location.origin + '/') {
-    event.respondWith(
-      fetch(event.request, { cache: 'no-store' })
-        .then(response => {
-          if (response.ok) {
-            // Clone and cache the fresh response
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => {
-          // Offline: serve cached HTML
-          return caches.match(event.request)
-            .then(cached => cached || caches.match('./index.html'));
-        })
-    );
+  // ── JS and CSS: Network-first ───────────────────────────────────
+  // Code updates must reach iOS immediately. Cache-first for JS/CSS
+  // means stale code keeps running on iOS with no way for users to fix it.
+  if (/\.(js|css)(\?|$)/.test(url)) {
+    event.respondWith(networkFirst(req));
     return;
   }
 
-  // ── JS and CSS: NETWORK-FIRST with cache fallback ───────────────
-  // Same as HTML — ensures JS/CSS updates propagate to iOS immediately.
-  // Cache-first would mean old JS runs indefinitely on iOS.
-  if (url.match(/\.(js|css)$/)) {
-    event.respondWith(
-      fetch(event.request, { cache: 'no-store' })
-        .then(response => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
+  // ── Icons and images: Cache-first ──────────────────────────────
+  // Static assets versioned by filename — safe to serve from cache.
+  if (/\.(png|jpg|jpeg|gif|webp|svg|ico)(\?|$)/.test(url)) {
+    event.respondWith(cacheFirst(req));
     return;
   }
 
-  // ── Icons and other static assets: CACHE-FIRST ─────────────────
-  // Icons/images don't change between versions (they're versioned by filename).
-  // Cache-first is appropriate here — faster and reduces network requests.
-  event.respondWith(
-    caches.match(event.request)
-      .then(cached => {
-        if (cached) return cached;
-
-        // Not in cache — fetch and store it
-        return fetch(event.request)
-          .then(response => {
-            if (response.ok) {
-              const clone = response.clone();
-              caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-            }
-            return response;
-          })
-          .catch(() => {
-            // Offline and not cached — return index.html as last resort
-            return caches.match('./index.html');
-          });
-      })
-  );
+  // ── Default: Network-first ──────────────────────────────────────
+  event.respondWith(networkFirst(req));
 });
+
+// ── Network-first: try network, fall back to cache ──────────────────
+function networkFirst(req) {
+  return fetch(req, { cache: 'no-store' })
+    .then(function(response) {
+      if (response && response.ok) {
+        var clone = response.clone();
+        caches.open(CACHE_NAME).then(function(cache) {
+          cache.put(req, clone);
+        }).catch(function() {});
+      }
+      return response;
+    })
+    .catch(function() {
+      return caches.match(req).then(function(cached) {
+        if (cached) return cached;
+        return caches.match('./index.html').then(function(shell) {
+          return shell || new Response(
+            '<!DOCTYPE html><html><body><h2>CA Tracker</h2><p>You are offline. Please reconnect and refresh.</p></body></html>',
+            { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+          );
+        });
+      });
+    });
+}
+
+// ── Cache-first: serve from cache, fetch if missing ─────────────────
+function cacheFirst(req) {
+  return caches.match(req).then(function(cached) {
+    if (cached) return cached;
+    return fetch(req).then(function(response) {
+      if (response && response.ok) {
+        var clone = response.clone();
+        caches.open(CACHE_NAME).then(function(cache) {
+          cache.put(req, clone);
+        }).catch(function() {});
+      }
+      return response;
+    }).catch(function() {
+      return new Response('', { status: 204, statusText: 'No Content' });
+    });
+  });
+}
