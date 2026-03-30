@@ -2,51 +2,206 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
+
   <!--
-    MOBILE-CRITICAL:
-    width=device-width  → layout width = physical screen width (not ~980px desktop default)
-    initial-scale=1.0   → no zoom-out on load (the main fix for "zoomed-out" look)
-    viewport-fit=cover  → allow content behind notch/status-bar for safe-area-inset-* usage
-    
-    NO maximum-scale / user-scalable=no — those cause Android WebView rendering bugs
-    and break accessibility pinch-zoom.
+    VIEWPORT
+    ─────────────────────────────────────────────────────────────────
+    width=device-width   → layout width = physical screen width
+    initial-scale=1.0    → no zoom-out on load
+    viewport-fit=cover   → content behind notch/status-bar (iOS safe-area-inset-*)
+
+    IMPORTANT: We intentionally omit maximum-scale and user-scalable=no.
+      • maximum-scale causes Android WebView layout miscalculation
+      • user-scalable=no breaks accessibility and is silently ignored by iOS 10+
+    Both also prevent the "iOS double-tap zoom" bug which iOS fixed in Safari 13+.
   -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-  <meta name="theme-color" content="#2563eb"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       iOS / iPadOS PWA META TAGS  (ADDED — critical for Add-to-Home-Screen)
+       ═══════════════════════════════════════════════════════════════ -->
+
+  <!-- Tells iOS Safari this page can be launched as a full-screen app -->
   <meta name="apple-mobile-web-app-capable" content="yes"/>
+
+  <!--
+    Status bar appearance when launched from Home Screen:
+      "default"        — white status bar (works on light-themed apps) ✓
+      "black"          — black status bar
+      "black-translucent" — overlaps content (requires safe-area padding)
+    We use "default" to match the app's light theme.
+  -->
   <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+
+  <!-- Name shown below the icon on iOS Home Screen -->
   <meta name="apple-mobile-web-app-title" content="CA Tracker"/>
+
+  <!-- Android / Chrome PWA capability flag -->
   <meta name="mobile-web-app-capable" content="yes"/>
 
-  <!-- Android WebView: prevent cache issues -->
+  <!-- Chrome / Android theme color (tab bar, system UI accent) -->
+  <meta name="theme-color" content="#2563eb"/>
+
+  <!--
+    iOS TOUCH ICONS  (ADDED — Safari uses these, NOT manifest.json icons)
+    ──────────────────────────────────────────────────────────────────
+    iOS ignores manifest.json icons for Add-to-Home-Screen.
+    It reads apple-touch-icon link tags instead.
+
+    Required sizes:
+      • 180×180 — iPhone @3x (iPhone 6 Plus and later)
+      • 167×167 — iPad Pro (2nd gen+)
+      • 152×152 — iPad, iPad Mini @2x
+      • 120×120 — iPhone @2x (most iPhones)
+
+    The browser picks the closest size ≥ needed. We provide all four so
+    iOS never has to upscale. "apple-touch-icon" without "precomposed"
+    lets iOS add its default gloss effect (removed in iOS 7+, so same result).
+  -->
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/icon-180.png"/>
+  <link rel="apple-touch-icon" sizes="167x167" href="assets/icons/icon-167.png"/>
+  <link rel="apple-touch-icon" sizes="152x152" href="assets/icons/icon-152.png"/>
+  <link rel="apple-touch-icon" sizes="120x120" href="assets/icons/icon-120.png"/>
+  <!-- Fallback for very old iOS (pre-iOS 7) -->
+  <link rel="apple-touch-icon" href="assets/icons/icon-152.png"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       iOS SPLASH SCREENS  (ADDED — prevents blank white screen on launch)
+       ═══════════════════════════════════════════════════════════════
+    Without these, iOS shows a white blank screen for ~1-2s on launch.
+    We use a solid-color SVG data URI instead of pre-generated PNGs for
+    every device resolution — this avoids shipping 20+ splash images.
+    The SVG fills the screen with the app background color and shows
+    the app name — it's replaced immediately when JS renders.
+  -->
+  <meta name="apple-mobile-web-app-splash-screen-image"
+        content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Crect width='100%25' height='100%25' fill='%23f0f4f8'/%3E%3Ctext x='50%25' y='50%25' font-family='system-ui' font-size='18' font-weight='700' fill='%232563eb' text-anchor='middle' dy='.35em'%3ECA Final Tracker%3C/text%3E%3C/svg%3E"/>
+
+  <!-- Standard splash for iOS (link rel approach) -->
+  <link rel="apple-touch-startup-image" href="assets/icons/icon-512.png"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       ANDROID WEBVIEW CACHE PREVENTION
+       ═══════════════════════════════════════════════════════════════ -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <meta http-equiv="Pragma" content="no-cache"/>
+  <meta http-equiv="Expires" content="0"/>
 
   <title>CA Final — Performance Tracker</title>
 
-  <!-- PWA Manifest -->
+  <!-- PWA Manifest (used by Android/Chrome; iOS ignores it for icons) -->
   <link rel="manifest" href="manifest.json"/>
 
-  <!-- Favicon fallback (inline SVG as data URI) -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='28'>📚</text></svg>"/>
+  <!--
+    FAVICON
+    SVG data URI favicon — works in all modern browsers.
+    Shown in browser tab when not installed as PWA.
+  -->
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/icon-96.png"/>
+  <link rel="shortcut icon" href="assets/icons/icon-192.png"/>
 
-  <!-- Fonts — preconnect for speed, loaded async -->
+  <!-- ═══════════════════════════════════════════════════════════════
+       FONTS — preconnect for speed, non-blocking async load
+       ═══════════════════════════════════════════════════════════════ -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <!--
+    media="print" + onload trick: loads font CSS asynchronously.
+    The noscript fallback handles JS-disabled environments.
+    This prevents fonts from being render-blocking.
+  -->
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap"
         rel="stylesheet" media="print" onload="this.media='all'"/>
   <noscript>
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap"
+          rel="stylesheet"/>
   </noscript>
 
   <!-- App CSS -->
   <link rel="stylesheet" href="css/style.css"/>
 
-  <!-- XLSX library for export — loaded before app scripts -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- ═══════════════════════════════════════════════════════════════
+       iOS 100VH FIX  (ADDED — CSS custom property for real viewport height)
+       ═══════════════════════════════════════════════════════════════
+    iOS Safari's 100vh includes the browser chrome (address bar + tab bar),
+    which means content gets cut off. We set --vh via JS to the true
+    inner height and keep it updated on resize/orientation change.
+    Usage in CSS:  height: calc(var(--vh, 1vh) * 100)
+    The style.css already uses min-height: 100vh on #app — for iOS we
+    override that with this custom property via the ios-compat class.
+  -->
+  <style>
+    /* iOS viewport height fix — applied immediately before any render */
+    :root { --vh: 1vh; }
+
+    /*
+      Prevent iOS Safari rubber-band scroll from showing white gap
+      above the app content when scrolled beyond top.
+    */
+    html {
+      background-color: #f0f4f8; /* matches --bg */
+      /* Prevent iOS text inflation */
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
+
+    /*
+      iOS Safari: prevent 300ms click delay on interactive elements.
+      touch-action: manipulation is the modern way — faster than
+      the legacy 'fastclick' library approach.
+    */
+    button, a, input, select, textarea, [role="button"] {
+      touch-action: manipulation;
+    }
+
+    /*
+      Blank-screen prevention: show a loading background immediately
+      before JS initialises. Removed once #app renders content.
+    */
+    #app:empty::before {
+      content: '';
+      display: block;
+      min-height: 100vh;
+      background: #f0f4f8;
+    }
+
+    /* iOS input zoom prevention — inputs must be font-size >= 16px */
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+
+    /*
+      iOS standalone mode: the status bar height is consumed by
+      env(safe-area-inset-top). We ensure the sticky header clears it.
+    */
+    @supports (padding-top: env(safe-area-inset-top)) {
+      .hdr {
+        padding-top: env(safe-area-inset-top);
+        height: calc(60px + env(safe-area-inset-top));
+      }
+      /* Content must not be hidden behind status bar */
+      body {
+        padding-top: 0; /* body itself has no padding; .hdr is sticky */
+      }
+    }
+
+    /* Smooth momentum scrolling on iOS for scrollable containers */
+    .content,
+    [style*="overflow-y:auto"],
+    [style*="overflow-y: auto"],
+    [style*="overflow-x:auto"] {
+      -webkit-overflow-scrolling: touch;
+    }
+  </style>
+
+  <!-- XLSX library for export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+          crossorigin="anonymous"></script>
 </head>
 <body>
 
-  <!-- Main app mount point — sidebar overlay (#sb-overlay) is rendered inside here -->
+  <!-- Main app mount point -->
   <div id="app"></div>
 
   <!-- Full-screen focus mode overlay -->
@@ -75,36 +230,122 @@
   <script src="js/strategy.js"></script>
   <script src="js/app.js"></script>
 
-  <!-- ── PWA: Service Worker Registration ─────────────────────── -->
+  <!-- ── PWA + iOS Compatibility Bootstrap ─────────────────────── -->
   <script>
-    // Register service worker for offline support
+    // ── iOS 100vh fix ──────────────────────────────────────────────
+    // iOS Safari's window.innerHeight is the TRUE viewport (excluding chrome).
+    // We set --vh so CSS can use calc(var(--vh,1vh) * 100) for full-height layouts.
+    function setVhProperty() {
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    }
+    setVhProperty();
+    window.addEventListener('resize', setVhProperty, { passive: true });
+    // Re-run after orientation change (iOS fires resize AFTER the animation)
+    window.addEventListener('orientationchange', () => {
+      setTimeout(setVhProperty, 300);
+    }, { passive: true });
+
+    // ── localStorage reliability on iOS ───────────────────────────
+    // iOS Safari in Private Browsing mode throws on localStorage.setItem.
+    // Wrap with a try/catch shim so the app degrades gracefully.
+    (function() {
+      try {
+        const TEST = '__ls_test__';
+        localStorage.setItem(TEST, '1');
+        localStorage.removeItem(TEST);
+        // localStorage works — no shim needed
+      } catch (e) {
+        // Private mode or quota exceeded — provide in-memory fallback
+        const _store = {};
+        const _ls = {
+          getItem:    k => (k in _store ? _store[k] : null),
+          setItem:    (k, v) => { _store[k] = String(v); },
+          removeItem: k => { delete _store[k]; },
+          clear:      () => { Object.keys(_store).forEach(k => delete _store[k]); },
+          key:        i => Object.keys(_store)[i] || null,
+          get length() { return Object.keys(_store).length; }
+        };
+        Object.defineProperty(window, 'localStorage', {
+          value: _ls, writable: false, configurable: true
+        });
+        console.warn('[iOS] localStorage unavailable — using in-memory fallback');
+      }
+    })();
+
+    // ── Service Worker Registration ────────────────────────────────
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(reg => console.log('[PWA] SW registered:', reg.scope))
-          .catch(err => console.warn('[PWA] SW registration failed:', err));
+        navigator.serviceWorker.register('./sw.js', { scope: './' })
+          .then(reg => {
+            console.log('[PWA] SW registered, scope:', reg.scope);
+
+            // iOS Safari: check for a waiting SW and activate it immediately.
+            // Without this, iOS can keep stale SW alive indefinitely.
+            if (reg.waiting) {
+              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (!newWorker) return;
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // New SW installed — tell it to activate immediately
+                  newWorker.postMessage({ type: 'SKIP_WAITING' });
+                }
+              });
+            });
+          })
+          .catch(err => {
+            // SW registration failure must not break the app
+            console.warn('[PWA] SW registration failed (app still works):', err);
+          });
+
+        // When a new SW takes over, reload once to get fresh assets
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!refreshing) {
+            refreshing = true;
+            window.location.reload();
+          }
+        });
       });
     }
 
-    // PWA Install prompt — capture and expose for optional in-app install button
+    // ── PWA Install prompt (Android/Chrome only) ──────────────────
     window._pwaInstallPrompt = null;
     window.addEventListener('beforeinstallprompt', e => {
       e.preventDefault();
       window._pwaInstallPrompt = e;
     });
 
-    // Android WebView: intercept navigation to prevent leaving the app
+    // ── External link interception ─────────────────────────────────
+    // Prevents the PWA from navigating away when links are tapped.
+    // Required for both Android WebView and iOS standalone mode.
     document.addEventListener('click', e => {
       const a = e.target.closest('a[href]');
-      if (a && a.href && !a.href.startsWith('javascript:')) {
+      if (!a || a.href.startsWith('javascript:')) return;
+      try {
         const url = new URL(a.href, location.href);
-        // Allow same-origin navigation; open external links in new tab
         if (url.origin !== location.origin && url.protocol.startsWith('http')) {
           e.preventDefault();
-          try { window.open(a.href, '_blank', 'noopener'); } catch(x) {}
+          window.open(a.href, '_blank', 'noopener,noreferrer');
         }
-      }
+      } catch (_) {}
     });
+
+    // ── iOS standalone detection ───────────────────────────────────
+    // In standalone mode (launched from Home Screen), iOS doesn't show
+    // the browser UI — but touch events and scrolling can differ.
+    // We add a class to <html> so CSS can target standalone mode
+    // (in addition to @media (display-mode: standalone) which iOS respects).
+    if (
+      window.navigator.standalone === true ||
+      window.matchMedia('(display-mode: standalone)').matches
+    ) {
+      document.documentElement.classList.add('is-standalone');
+    }
   </script>
 
 </body>
